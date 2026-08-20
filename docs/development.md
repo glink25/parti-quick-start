@@ -171,34 +171,89 @@ public/parti.room.json
 - `package.json.version` 与 manifest `version` 保持一致；
 - `room.minPlayers` / `maxPlayers` 应由具体项目定义，不在通用模板里假设某类游戏人数。
 
-## Worker 必须打成单文件
+## Worker 构建是特殊路径
 
-源码可以自由拆分，但最终必须输出：
+源码可以自由拆分，但最终 Worker 必须打成一个文件，例如：
 
 ```text
 dist/room.worker.js
 ```
 
-建议用 esbuild 或 Vite 插件额外构建 Worker：
+**不要直接把 Worker 当作普通 Vite 应用入口交给 Vite/Rollup 自行优化。** Vite 打包和 tree-shaking 可能改写 Worker 的导入/导出形态，而 Parti Runtime 需要 Worker 产物保留与 `@parti/worker-sdk` 的运行时边界。
+
+### 必须保留 `defineRoom` 的 SDK import
+
+Worker 源码应显式写：
 
 ```ts
-await esbuild({
-  entryPoints: ['src/worker/index.ts'],
-  outfile: `${outDir}/room.worker.js`,
-  bundle: true,
-  format: 'esm',
-  target: 'es2022',
-  external: ['@parti/worker-sdk'],
+import { defineRoom } from '@parti/worker-sdk';
+
+export default defineRoom({
+  // ...
 });
 ```
 
+最终生成的 Worker JavaScript 中也必须继续存在来自 `@parti/worker-sdk` 的 import。**不得把 `defineRoom` 内联、复制、替换或 bundle 进 Worker 产物。**
+
+推荐像 Parti 官方 Room 一样，由 Vite 插件在 `closeBundle` 中调用 esbuild 单独构建 Worker，并将 SDK 标记为 external：
+
+```ts
+import { readFileSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { build as esbuild } from 'esbuild';
+import { defineConfig, type Plugin } from 'vite';
+
+function partiWorkerBundle(outDir: string): Plugin {
+  return {
+    name: 'parti-worker-bundle',
+    async closeBundle() {
+      const outfile = path.join(outDir, 'room.worker.js');
+
+      await esbuild({
+        entryPoints: ['src/worker/index.ts'],
+        outfile,
+        bundle: true,
+        format: 'esm',
+        target: 'es2022',
+        sourcemap: true,
+        external: ['@parti/worker-sdk'],
+      });
+
+      // Parti Worker 保持简单明确的 default export 形式。
+      const source = readFileSync(outfile, 'utf8');
+      const compatibleSource = source.replace(
+        /export\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+default\s*\};/,
+        'export default $1;',
+      );
+      writeFileSync(outfile, compatibleSource);
+    },
+  };
+}
+```
+
+其中最关键的配置是：
+
+```ts
+external: ['@parti/worker-sdk']
+```
+
+它确保构建产物继续保留类似下面的代码：
+
+```js
+import { defineRoom } from '@parti/worker-sdk';
+```
+
+而不是把 SDK 和 `defineRoom` 一起压进最终 Worker 文件。
+
 产物约束：
 
-- 保留 `@parti/worker-sdk` import；
-- 默认导出 `defineRoom(...)` 结果；
+- **必须保留 `@parti/worker-sdk` import，并保留 `defineRoom` 的引入；**
+- 默认导出 `defineRoom(...)` 生成的 Room；
+- 建议将 `export { x as default }` 规整为直接的 `export default x`；
 - 不保留项目内部相对模块 import；
-- Worker 内部规则模块被 bundle；
-- `initialState` 使用函数。
+- Worker 内部规则模块可以被 bundle；
+- `initialState` 使用函数；
+- `parti.room.json` 的 `entry.worker` 必须与实际 Worker 文件名一致。
 
 ## Vite 输出与 Parti Harness
 
@@ -250,6 +305,8 @@ build: {
 }
 ```
 
+UI 和静态资源继续由 Vite 正常构建；Worker 使用上面的独立 esbuild 路径输出到同一个 Room Package 目录。
+
 ## package.json 脚本
 
 推荐至少提供：
@@ -276,6 +333,15 @@ npm test
 npm run build
 npm run package
 ```
+
+构建后还应直接检查 Worker 产物，例如：
+
+```bash
+grep "@parti/worker-sdk" dist/room.worker.js
+grep "defineRoom" dist/room.worker.js
+```
+
+这两项是 Parti Worker 的构建兼容性检查，不应只依赖源码中存在对应 import。
 
 ## UI 更新原则
 
