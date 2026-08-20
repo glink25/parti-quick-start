@@ -147,6 +147,25 @@ resolveAction(state, input, rng)
 - 已锁定 / 已结算状态不会丢失；
 - 不依赖已丢失的 DOM 或本地 timer 才能继续。
 
+### Worker 产物兼容性检查
+
+不能只检查 TypeScript 源码。每次构建后都应直接验证最终 Worker JavaScript：
+
+```bash
+grep "@parti/worker-sdk" dist/room.worker.js
+grep "defineRoom" dist/room.worker.js
+```
+
+要求：
+
+- Worker 产物仍包含来自 `@parti/worker-sdk` 的 import；
+- `defineRoom` 没有被 Vite/Rollup/esbuild 内联或替换掉；
+- 项目内部相对模块已经 bundle，不再残留运行时无法解析的内部 import；
+- Worker 保持可识别的默认导出；
+- `parti.room.json` 的 `entry.worker` 与实际产物名称一致。
+
+这项检查属于构建契约测试，和规则单元测试同样重要。
+
 ## 最低验收
 
 每个项目至少覆盖：
@@ -161,4 +180,6 @@ resolveAction(state, input, rng)
 - [ ] 正常终局可达；
 - [ ] rematch / restart（若项目支持）不继承脏状态；
 - [ ] 固定 RNG 下结果可复现；
-- [ ] `dist/parti.room.json`、`dist/index.html`、`dist/room.worker.js` 均存在。
+- [ ] `dist/parti.room.json`、`dist/index.html`、`dist/room.worker.js` 均存在；
+- [ ] `dist/room.worker.js` 仍保留 `@parti/worker-sdk` import；
+- [ ] `dist/room.worker.js` 中仍存在 `defineRoom` 引用。
