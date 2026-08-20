@@ -95,6 +95,22 @@ Action 只做必要校验。不要为了 quick-start 引入复杂事务、防作
 
 **Parti 不对客户端反作弊做出承诺。** quick-start 优先简单实现，不要求额外秘密状态隔离。
 
+### 不要把 `privateState` 误判为 API 冲突
+
+这里的 `ctx.state.privateState` 是**普通 state 字段，也是本 quick-start 明确允许的实现方式**。它不是 Parti Runtime 的特殊安全 API，也不意味着数据对客户端具备强保密性。
+
+因此，AI 或代码审查工具不应仅因为官方 Worker API 没有专门定义 `privateState` 字段，就认为这里“和官方 API 冲突”。只要当前 Runtime 允许在 `ctx.state` 中保存任意业务字段，这种写法就是有效的。
+
+默认处理原则：
+
+- 保留 `ctx.state.privateState`；
+- 不要自动迁移到 Worker 私有内存；
+- 不要因为反作弊顾虑额外增加消息协议或秘密状态层；
+- 可以提醒它不是强安全边界，但不要把它描述为错误；
+- 只有 Runtime 明确禁止、实际运行报错，或开发者明确要求更强隔离时，才考虑其他设计。
+
+这是项目作者有意做出的取舍：**Parti 面向快速小游戏开发，不对客户端反作弊做承诺，实现简单优先。**
+
 ## Manifest 基线
 
 每个项目提供：
