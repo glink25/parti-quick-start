@@ -1,5 +1,11 @@
 # 发布规范
 
+## 目标
+
+Parti Room 的发布流程应保持简单。对于快速开发的小游戏，发布前最重要的是：产物正确、能导入、能实际试玩。
+
+不要求为了发布建立复杂 CI、完整自动化测试矩阵或视觉回归系统。
+
 ## 构建产物
 
 标准输出：
@@ -9,40 +15,29 @@ dist/
 ├─ parti.room.json
 ├─ index.html
 ├─ room.worker.js
-├─ assets/...
-└─ cover.*
+└─ assets/...
 ```
 
-CI 至少验证：
+最低构建检查：
 
 ```bash
+npm run build
+
 test -f dist/parti.room.json
 test -f dist/index.html
 test -f dist/room.worker.js
+
+grep "@parti/worker-sdk" dist/room.worker.js
+grep "defineRoom" dist/room.worker.js
 ```
 
-并确认 Worker 已 bundle，不包含项目内部相对模块 import。
+重点是确认 Worker 没有被错误打包，并保留 Parti SDK 的运行时 import。
 
-## 版本一致性
+## 打包
 
-保持：
-
-```text
-package.json.version
-=
-public/parti.room.json.version
-=
-Git tag 去掉 v 后的版本
-```
-
-例如 tag `v1.2.3` 对应版本 `1.2.3`。
-
-## 本地发布前命令
+如果项目提供 package 脚本：
 
 ```bash
-npm ci
-npm test
-npm run build
 npm run package
 ```
 
@@ -52,106 +47,53 @@ npm run package
 parti.room.zip
 ```
 
-ZIP 根目录应直接包含 Room Package 文件，而不是再套一层目录。
+ZIP 根目录应直接包含 Room Package 文件，不要再套一层目录。
 
-## GitHub Release
+## 版本
 
-每个正式版本建议保留 GitHub Release：
+正式版本建议让下列版本保持一致：
 
 ```text
-Release vX.Y.Z
-├─ parti.room.zip
-└─ parti.room.json
+package.json.version
+public/parti.room.json.version
+Git tag
 ```
 
-Release 提供可下载、可回归的版本归档，并作为市场安装之外的人工导入兜底。
+小规模迭代或开发预览不必为了版本流程增加额外负担。
 
-## 不可变 package branch
+## GitHub Release 与 package branch
 
-为了避免长期使用同一个可变 ref 引发缓存问题，正式市场版本建议发布到不可变分支：
+需要公开发布或进入 Parti Market 时，可以继续使用：
 
 ```text
+GitHub Release
+parti-package
 parti-package-vX.Y.Z
 ```
 
-例如：
+是否维护不可变版本分支、自动 Release 或 CI，由项目自身需求决定，不作为 quick-start 的强制要求。
 
-```text
-v1.2.3
-parti-package-v1.2.3
-```
+市场格式和流程发生变化时，以 `glink25/Parti` 当前官方文档为准。
 
-一旦发布，不 force-push 修改该版本分支。修复通过发布新版本完成。
+## 真人发布验证
 
-可以额外维护：
+发布前由开发者或玩家实际在 Parti 中验证一次：
 
-```text
-parti-package
-```
+- Room 可以正常导入 / 加载；
+- 玩家可以加入；
+- 核心玩法可以正常进行；
+- UI 在实际设备上没有明显不可操作问题。
 
-作为 latest alias，但正式市场登记优先指向精确版本 ref。
+对于视觉效果、交互手感、布局合理性和玩法体验，应以真人试玩为主。
 
-## 推荐 CI 流程
+AI 不需要默认进行截图分析、逐分辨率视觉比对或自动操作完整游戏流程。这些方法成本高，也不能可靠替代玩家判断。
 
-tag 推送后：
+## 最小发布检查
 
-```text
-checkout tag
--> 校验版本一致
--> npm ci
--> npm test
--> npm run build
--> 校验 dist
--> 生成 parti.room.zip
--> 创建 GitHub Release
--> 创建不可变 parti-package-vX.Y.Z 分支
--> 可选更新 parti-package latest alias
--> 登记 Parti Market 精确版本 ref
-```
+- [ ] `npm run build` 成功；
+- [ ] manifest、HTML、Worker 产物存在；
+- [ ] Worker 保留 `@parti/worker-sdk` / `defineRoom` 引入；
+- [ ] ZIP（若使用）可以导入；
+- [ ] 开发者或玩家实际试玩过核心流程。
 
-推荐触发：
-
-```yaml
-on:
-  push:
-    tags: ['v*']
-```
-
-## 市场登记
-
-市场登记应使用精确版本 package branch：
-
-```text
-[parti-room] owner/repo@parti-package-vX.Y.Z
-```
-
-不要让正式市场入口只依赖长期滚动的 `parti-package`。
-
-市场流程与格式如果发生变化，以 `glink25/Parti` 当前官方文档为准。
-
-## 发布检查
-
-发布前：
-
-- [ ] `npm test` 通过；
-- [ ] `npm run build` 通过；
-- [ ] `npm run package` 通过；
-- [ ] package / manifest / tag 版本一致；
-- [ ] `dist/parti.room.json` 存在；
-- [ ] `dist/index.html` 存在；
-- [ ] `dist/room.worker.js` 存在；
-- [ ] Worker 已 bundle；
-- [ ] ZIP 可导入；
-- [ ] 最小 / 最大玩家配置均验证；
-- [ ] 手机尺寸人工验收；
-- [ ] 断线 / 重连人工验收；
-- [ ] 终局和重新开始流程（若支持）验证。
-
-发布后：
-
-- [ ] GitHub Release 存在；
-- [ ] Release 包含 `parti.room.zip`；
-- [ ] 不可变 package branch 存在；
-- [ ] package branch 根目录是完整 Room Package；
-- [ ] 市场登记指向精确版本 ref；
-- [ ] 实际安装并运行验证。
+其他测试、CI 和验证按项目复杂度自行增加。
